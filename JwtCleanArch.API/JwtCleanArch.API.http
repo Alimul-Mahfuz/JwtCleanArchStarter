@@ -1,0 +1,6 @@
+@JwtCleanArch.API_HostAddress = http://localhost:5078
+
+GET {{JwtCleanArch.API_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

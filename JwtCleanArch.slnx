@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="Domain/JwtCleanArch.Domain.csproj" />
+  <Project Path="JwtCleanArch.API/JwtCleanArch.API.csproj" />
+  <Project Path="JwtCleanArch.Application/JwtCleanArch.Application.csproj" />
+  <Project Path="JwtCleanArch.Infrastructure/JwtCleanArch.Infrastructure.csproj" />
+</Solution>
