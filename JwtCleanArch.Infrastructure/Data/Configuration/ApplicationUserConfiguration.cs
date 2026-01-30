@@ -10,6 +10,14 @@ namespace JwtCleanArch.Infrastructure.Data.Configuration
         {
             builder.HasKey(x => x.Id);
             builder.Property(x => x.FullName).IsRequired();
+            builder.Property(x => x.Email).IsRequired();
+            builder.HasIndex(x => x.IdentityUserId).IsUnique();
+
+            builder.HasOne<Microsoft.AspNetCore.Identity.IdentityUser>()
+                .WithMany()
+                .HasForeignKey(x => x.IdentityUserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
         }
     }
 }

@@ -1,4 +1,5 @@
-﻿using JwtCleanArch.Application.DTOs;
+﻿using JwtCleanArch.Application.Common;
+using JwtCleanArch.Application.DTOs;
 using JwtCleanArch.Application.Interfaces;
 using JwtCleanArch.Domain.Entities;
 using JwtCleanArch.Infrastructure.Data;
@@ -27,11 +28,11 @@ namespace JwtCleanArch.Infrastructure.Services
             _jwtSettings = jwtSettings.Value;
         }
 
-        async Task<AuthenticationResponseDto> IAuthService.RegisterAsync(string email, string password)
+        public async Task<Result<AuthenticationResponseDto>> RegisterAsync(string email, string password)
         {
             var existingUser = await _userManager.FindByEmailAsync(email);
             if (existingUser != null)
-                throw new Exception("User already exists");
+                return Result<AuthenticationResponseDto>.Failure("User already exists");
 
             var user = new IdentityUser
             {
@@ -40,40 +41,68 @@ namespace JwtCleanArch.Infrastructure.Services
             };
 
             var result = await _userManager.CreateAsync(user, password);
-            if (!result.Succeeded)
-                throw new Exception(string.Join(", ", result.Errors.Select(e => e.Description)));
 
-            return await GenerateTokensAsync(user);
+            if (!result.Succeeded)
+            {
+                return Result<AuthenticationResponseDto>.Failure(
+                    result.Errors.Select(e => e.Description).ToArray()
+                );
+            }
+
+            var applicationUser = new ApplicationUser
+            {
+                FullName = email,
+                Email = email,
+                IdentityUserId = user.Id,
+            };
+
+            _context.ApplicationUsers.Add(applicationUser);
+            await _context.SaveChangesAsync();
+
+            var tokens = await GenerateTokensAsync(user);
+
+            return Result<AuthenticationResponseDto>.SuccessResult(tokens);
         }
 
-        async Task<AuthenticationResponseDto> IAuthService.LoginAsync(string email, string password)
+
+        public async Task<Result<AuthenticationResponseDto>> LoginAsync(string email, string password)
         {
             var user = await _userManager.FindByEmailAsync(email);
-            if (user == null || !await _userManager.CheckPasswordAsync(user, password))
-                throw new Exception("Invalid credentials");
 
-            return await GenerateTokensAsync(user);
+            if (user == null)
+                return Result<AuthenticationResponseDto>.Failure("Invalid credentials");
+
+            var validPassword = await _userManager.CheckPasswordAsync(user, password);
+
+            if (!validPassword)
+                return Result<AuthenticationResponseDto>.Failure("Invalid credentials");
+
+            var tokens = await GenerateTokensAsync(user);
+
+            return Result<AuthenticationResponseDto>.SuccessResult(tokens);
         }
 
-        async Task<AuthenticationResponseDto> IAuthService.RefreshTokenAsync(string refreshToken)
+
+        async Task<Result<AuthenticationResponseDto>> IAuthService.RefreshTokenAsync(string refreshToken)
         {
             var existingToken = await _context.UserRefreshTokens.FirstOrDefaultAsync(t => t.Token == refreshToken && !t.IsRevoked);
             if (existingToken == null || existingToken.Expires < DateTime.UtcNow)
             {
-                throw new Exception("Invalid refresh token");
+                return Result<AuthenticationResponseDto>.Failure("Token invaldi");
             }
 
             var user = await _userManager.FindByIdAsync(existingToken.UserId);
 
             if (user == null)
             {
-                throw new Exception("Invalid user");
-            }
+                return Result<AuthenticationResponseDto>.Failure("User Invalid");
 
+            }
             existingToken.IsRevoked = true;
             await _context.SaveChangesAsync();
 
-            return await GenerateTokensAsync(user);
+            var token = await GenerateTokensAsync(user);
+            return Result<AuthenticationResponseDto>.SuccessResult(token);
 
 
         }
@@ -82,12 +111,16 @@ namespace JwtCleanArch.Infrastructure.Services
         {
             var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_jwtSettings.Secret));
             var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
+            var securityStamp = await _userManager.GetSecurityStampAsync(user);
 
             var claims = new List<Claim>
             {
                 new Claim(JwtRegisteredClaimNames.Sub, user.Id),
                 new Claim(JwtRegisteredClaimNames.Email, user.Email),
+                new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
+                new Claim("security_stamp", securityStamp),
                 new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
+
             };
 
             // Use JwtSecurityToken directly instead of SecurityTokenDescriptor
@@ -102,7 +135,6 @@ namespace JwtCleanArch.Infrastructure.Services
             var tokenHandler = new JwtSecurityTokenHandler();
             var tokenString = tokenHandler.WriteToken(jwtToken);
 
-            // Refresh Token (still custom, as ASP.NET Core doesn’t provide built-in refresh tokens)
             var refreshToken = Convert.ToBase64String(RandomNumberGenerator.GetBytes(64));
             var userRefreshToken = new UserRefreshToken
             {
