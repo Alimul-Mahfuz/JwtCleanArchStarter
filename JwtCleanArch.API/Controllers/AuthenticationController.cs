@@ -52,5 +52,24 @@ namespace JwtCleanArch.API.Controllers
                 });
             }
         }
+
+
+        [HttpPost("logout")]
+        public async Task<ActionResult> Logout(string refreshToken)
+        {
+            try
+            {
+                var response = await _authService.LogoutAsync(refreshToken);
+                if (!response.Success)
+                {
+                    return BadRequest(response);
+                }
+                return Ok(response);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
     }
 }

@@ -154,6 +154,24 @@ namespace JwtCleanArch.Infrastructure.Services
             };
         }
 
+        public async Task<Result<object>> LogoutAsync(string refreshToken)
+        {
+            if (string.IsNullOrEmpty(refreshToken))
+            {
+                return Result<object>.Failure("Invalid refreshtoken");
+            }
+            var token = await _context.UserRefreshTokens.FirstOrDefaultAsync(x => x.Token == refreshToken);
 
+            if (token == null)
+            {
+                return Result<object>.Failure("Invalid token");
+            }
+
+            _context.UserRefreshTokens.Remove(token);
+            await _context.SaveChangesAsync();
+            return Result<object>.SuccessResult("Token successfully removed");
+
+
+        }
     }
 }
